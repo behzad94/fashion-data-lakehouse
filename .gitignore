@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Mac
+.DS_Store
+
+# Logs
+*.log
+
+# Airflow local stuff (we will mount some volumes)
+airflow/logs/
+airflow/plugins/__pycache__/
+
+# Spark local stuff
+spark-warehouse/
+
