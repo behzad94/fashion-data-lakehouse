@@ -16,3 +16,6 @@ airflow/plugins/__pycache__/
 # Spark local stuff
 spark-warehouse/
 
+# Data files
+data/source/
+

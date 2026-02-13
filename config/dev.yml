@@ -1,0 +1,12 @@
+project:
+  name: fashion-data-platform
+
+minio:
+  endpoint: http://minio:9000
+  access_key: minioadmin
+  secret_key: minioadmin
+  bucket: lake
+
+bronze:
+  base_path: bronze
+  dataset_name: online_retail
