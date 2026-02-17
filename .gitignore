@@ -2,20 +2,27 @@
 __pycache__/
 *.pyc
 .venv/
+venv/
 
-# Mac
+# Airflow logs and local state
+airflow_logs/
+logs/
+airflow.db
+
+# Docker / OS
 .DS_Store
 
-# Logs
-*.log
+# IDE
+.vscode/
+.idea/
 
-# Airflow local stuff (we will mount some volumes)
-airflow/logs/
-airflow/plugins/__pycache__/
+# Data (usually should not be committed)
+data/
+*.csv
+*.parquet
+*.zip
+*.xlsx
 
-# Spark local stuff
-spark-warehouse/
-
-# Data files
-data/source/
-
+# Local secrets
+.env
+.env.*

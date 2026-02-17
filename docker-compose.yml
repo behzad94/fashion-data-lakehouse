@@ -1,3 +1,19 @@
+version: "3.9"
+
+x-airflow-env: &airflow_env
+  AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+
+x-airflow-common: &airflow_common
+  image: fdp-airflow:2.9.3
+  environment:
+    <<: *airflow_env
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - airflow_logs:/opt/airflow/logs
+    - ./spark/jobs:/opt/spark/jobs:ro
+
 services:
   postgres:
     image: postgres:16
@@ -10,7 +26,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U airflow -d airflow" ]
       interval: 5s
@@ -29,82 +44,139 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live >/dev/null || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # ------------------------------------------------------------
+  # MinIO bootstrap + seed (PROFESSIONAL local-dev pattern)
+  # Uses shell-capable image + downloads mc for ARM64 (Apple Silicon)
+  # ------------------------------------------------------------
+  minio-init:
+    image: alpine:3.20
+    container_name: fdp_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    command: >
+      sh -c "
+        set -e;
+        apk add --no-cache curl ca-certificates;
+        curl -fsSL https://dl.min.io/client/mc/release/linux-arm64/mc -o /usr/local/bin/mc;
+        chmod +x /usr/local/bin/mc;
+
+        echo '--- setting mc alias ---';
+        mc alias set local http://minio:9000 minioadmin minioadmin;
+
+        echo '--- creating bucket lake (if missing) ---';
+        mc mb -p local/lake || true;
+
+        echo '--- minio-init done ---';
+      "
+    restart: "no"
+
+  seed-online-retail:
+    image: alpine:3.20
+    container_name: fdp_seed_online_retail
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./data/source/online_retail/online_retail.csv:/seed/online_retail.csv:ro
+    command: >
+      sh -c "
+        set -e;
+        apk add --no-cache curl ca-certificates;
+        curl -fsSL https://dl.min.io/client/mc/release/linux-arm64/mc -o /usr/local/bin/mc;
+        chmod +x /usr/local/bin/mc;
+
+        echo '--- setting mc alias ---';
+        mc alias set local http://minio:9000 minioadmin minioadmin;
+
+        echo '--- ensuring bucket exists ---';
+        mc mb -p local/lake || true;
+
+        echo '--- uploading seed file ---';
+        mc cp /seed/online_retail.csv local/lake/raw/online_retail/online_retail.csv;
+
+        echo '--- seed done ---';
+      "
+    restart: "no"
 
   airflow-init:
-    image: apache/airflow:2.9.3-python3.11
+    <<: *airflow_common
     container_name: fdp_airflow_init
     depends_on:
       postgres:
         condition: service_healthy
+      seed-online-retail:
+        condition: service_completed_successfully
     environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
-      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      <<: *airflow_env
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - airflow_logs:/opt/airflow/logs
     command: >
-      bash -c " airflow db migrate && airflow users create
-        --username admin
-        --password admin
-        --firstname Admin
-        --lastname User
-        --role Admin
-        --email admin@example.com
-      "
+      bash -lc '
+        airflow db migrate &&
+        airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true &&
+        airflow connections delete spark_default || true &&
+        airflow connections add spark_default --conn-type spark --conn-host "spark-master:7077"
+      '
 
   airflow-webserver:
-    image: apache/airflow:2.9.3-python3.11
+    <<: *airflow_common
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
     container_name: fdp_airflow_webserver
     depends_on:
-      - airflow-init
+      airflow-init:
+        condition: service_completed_successfully
     environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
-      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      <<: *airflow_env
       AIRFLOW__WEBSERVER__WEB_SERVER_HOST: "0.0.0.0"
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - airflow_logs:/opt/airflow/logs
     ports:
       - "8080:8080"
     command: [ "airflow", "webserver" ]
 
   airflow-scheduler:
-    image: apache/airflow:2.9.3-python3.11
+    <<: *airflow_common
     container_name: fdp_airflow_scheduler
     depends_on:
-      - airflow-init
-    environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
-      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - airflow_logs:/opt/airflow/logs
+      airflow-init:
+        condition: service_completed_successfully
     command: [ "airflow", "scheduler" ]
 
   spark-master:
-    image: spark:3.5.1
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+    image: fdp-spark:3.5.1
     container_name: fdp_spark_master
+    depends_on:
+      seed-online-retail:
+        condition: service_completed_successfully
     ports:
       - "7077:7077"
       - "8081:8080"
     volumes:
       - ./spark/jobs:/opt/spark/jobs
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     command: >
       bash -lc "/opt/spark/sbin/start-master.sh -h 0.0.0.0 && tail -f /opt/spark/logs/*"
 
   spark-worker:
-    image: spark:3.5.1
+    image: fdp-spark:3.5.1
     container_name: fdp_spark_worker
     depends_on:
-      - spark-master
+      spark-master:
+        condition: service_started
     ports:
       - "8082:8080"
     volumes:
       - ./spark/jobs:/opt/spark/jobs
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     command: >
       bash -lc "/opt/spark/sbin/start-worker.sh spark://spark-master:7077 && tail -f /opt/spark/logs/*"
 

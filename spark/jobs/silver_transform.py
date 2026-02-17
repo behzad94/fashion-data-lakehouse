@@ -6,29 +6,23 @@ def build_spark() -> SparkSession:
     return (
         SparkSession.builder
         .master("spark://spark-master:7077")
-        .appName("bronze_ingest_online_retail")
+        .appName("silver_transform_online_retail")
         .getOrCreate()
     )
 
 def main() -> None:
     ingest_date = sys.argv[1] if len(sys.argv) > 1 else str(date.today())
-
     spark = build_spark()
 
-    raw_path = "s3a://lake/raw/online_retail/online_retail.csv"
     bronze_path = f"s3a://lake/bronze/online_retail/ingest_date={ingest_date}/"
+    silver_path = f"s3a://lake/silver/online_retail/ingest_date={ingest_date}/"
 
-    df = (
-        spark.read
-        .option("header", "true")
-        .option("inferSchema", "true")
-        .csv(raw_path)
-    )
+    df = spark.read.parquet(bronze_path)
 
     (
         df.write
         .mode("overwrite")
-        .parquet(bronze_path)
+        .parquet(silver_path)
     )
 
     spark.stop()
