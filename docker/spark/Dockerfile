@@ -13,6 +13,8 @@ ADD https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_B
 # Make jars readable by everyone (Spark runs as non-root)
 RUN chmod 644 /opt/spark/jars/hadoop-aws-*.jar /opt/spark/jars/aws-java-sdk-bundle-*.jar
 
+RUN pip3 install pyspark pytest
+
 # Go back to the default user (safe). If the base image uses another user, this still works:
 # world-readable jars = no permission problem.
 USER 185
