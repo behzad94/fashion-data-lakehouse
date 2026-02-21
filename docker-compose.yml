@@ -13,6 +13,7 @@ x-airflow-common: &airflow_common
     - ./airflow/dags:/opt/airflow/dags
     - airflow_logs:/opt/airflow/logs
     - ./spark/jobs:/opt/spark/jobs:ro
+    - ./config:/opt/fdp/config:ro
 
 services:
   postgres:
@@ -162,7 +163,10 @@ services:
       - "8081:8080"
     volumes:
       - ./spark/jobs:/opt/spark/jobs
+      - ./spark/tests:/opt/spark/tests
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ./config:/opt/fdp/config:ro
+
     command: >
       bash -lc "/opt/spark/sbin/start-master.sh -h 0.0.0.0 && tail -f /opt/spark/logs/*"
 
@@ -177,6 +181,8 @@ services:
     volumes:
       - ./spark/jobs:/opt/spark/jobs
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ./config:/opt/fdp/config:ro
+
     command: >
       bash -lc "/opt/spark/sbin/start-worker.sh spark://spark-master:7077 && tail -f /opt/spark/logs/*"
 

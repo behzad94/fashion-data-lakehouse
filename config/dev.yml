@@ -10,3 +10,29 @@ minio:
 bronze:
   base_path: bronze
   dataset_name: online_retail
+
+silver:
+  base_path: silver
+  dataset_name: online_retail
+
+  # rules for "true Silver"
+  rules:
+    drop_if_null:
+      - InvoiceNo
+      - StockCode
+      - InvoiceDate
+      - Country
+
+    numeric_constraints:
+      Quantity:
+        gt: 0
+      UnitPrice:
+        gte: 0
+
+  dedup_keys:
+    - InvoiceNo
+    - StockCode
+    - InvoiceDate
+    - CustomerID
+    - Quantity
+    - UnitPrice
