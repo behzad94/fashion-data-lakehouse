@@ -15,6 +15,10 @@ silver:
   base_path: silver
   dataset_name: online_retail
 
+gold:
+  base_path: gold
+  dataset_name: online_retail
+
   # rules for "true Silver"
   rules:
     drop_if_null:
@@ -40,4 +44,13 @@ silver:
 quality:
   base_path: quality_reports
   dataset_name: online_retail
-  suite_name: silver_online_retail
+
+  # Great Expectations suites
+  silver_suite_name: silver_online_retail
+
+  # Gold suites (we will create these later)
+  gold_daily_revenue_suite_name: gold_daily_revenue
+  gold_top_products_suite_name: gold_top_products
+  gold_country_performance_suite_name: gold_country_performance
+  gold_customer_rfm_suite_name: gold_customer_rfm
+  
