@@ -1,4 +1,5 @@
-FROM apache/airflow:2.9.3-python3.11
+FROM apache/airflow:2.9.3-python3.8
+
 
 USER root
 
@@ -29,6 +30,11 @@ RUN chmod 644 /opt/spark/jars/hadoop-aws-*.jar /opt/spark/jars/aws-java-sdk-bund
 ENV SPARK_HOME=/opt/spark
 ENV PATH="${SPARK_HOME}/bin:${PATH}"
 
+
 # 4) Install the Airflow Spark provider (pinned)
 USER airflow
 RUN pip install --no-cache-dir "apache-airflow-providers-apache-spark==4.1.1"
+
+# Great Expectations is needed because Airflow runs spark-submit in client mode,
+# so the Spark driver runs inside this container and imports GE.
+RUN pip install --no-cache-dir "notebook<7" "great-expectations==0.18.21" "pyyaml==6.0.2"

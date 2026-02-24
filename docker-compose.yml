@@ -1,5 +1,3 @@
-version: "3.9"
-
 x-airflow-env: &airflow_env
   AIRFLOW__CORE__EXECUTOR: LocalExecutor
   AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
@@ -14,6 +12,7 @@ x-airflow-common: &airflow_common
     - airflow_logs:/opt/airflow/logs
     - ./spark/jobs:/opt/spark/jobs:ro
     - ./config:/opt/fdp/config:ro
+    - ./great_expectations:/opt/fdp/great_expectations:ro
 
 services:
   postgres:
@@ -143,6 +142,9 @@ services:
 
   airflow-scheduler:
     <<: *airflow_common
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
     container_name: fdp_airflow_scheduler
     depends_on:
       airflow-init:
@@ -166,11 +168,15 @@ services:
       - ./spark/tests:/opt/spark/tests
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ./config:/opt/fdp/config:ro
+      - ./great_expectations:/opt/fdp/great_expectations:ro
 
     command: >
       bash -lc "/opt/spark/sbin/start-master.sh -h 0.0.0.0 && tail -f /opt/spark/logs/*"
 
   spark-worker:
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
     image: fdp-spark:3.5.1
     container_name: fdp_spark_worker
     depends_on:
@@ -182,7 +188,7 @@ services:
       - ./spark/jobs:/opt/spark/jobs
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ./config:/opt/fdp/config:ro
-
+      - ./great_expectations:/opt/fdp/great_expectations:ro
     command: >
       bash -lc "/opt/spark/sbin/start-worker.sh spark://spark-master:7077 && tail -f /opt/spark/logs/*"
 

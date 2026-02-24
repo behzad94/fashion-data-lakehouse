@@ -36,3 +36,8 @@ silver:
     - CustomerID
     - Quantity
     - UnitPrice
+    
+quality:
+  base_path: quality_reports
+  dataset_name: online_retail
+  suite_name: silver_online_retail

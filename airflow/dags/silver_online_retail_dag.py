@@ -40,5 +40,16 @@ with DAG(
         application_args=["{{ ds }}"],
         conf=S3A_CONF,
     )
+    
+    validate_silver = SparkSubmitOperator(
+    task_id="validate_silver",
+    conn_id="spark_default",
+    application="/opt/spark/jobs/validate_silver_ge.py",
+    name="validate_silver_online_retail",
+    verbose=True,
+    application_args=["{{ ds }}"],
+    conf=S3A_CONF,
+)
 
-    bronze_ingest >> silver_transform
+    bronze_ingest >> silver_transform >> validate_silver
+
