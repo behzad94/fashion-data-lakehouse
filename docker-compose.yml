@@ -169,6 +169,7 @@ services:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ./config:/opt/fdp/config:ro
       - ./great_expectations:/opt/fdp/great_expectations:ro
+      - ./:/opt/spark/work-dir
 
     command: >
       bash -lc "/opt/spark/sbin/start-master.sh -h 0.0.0.0 && tail -f /opt/spark/logs/*"
@@ -189,6 +190,7 @@ services:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ./config:/opt/fdp/config:ro
       - ./great_expectations:/opt/fdp/great_expectations:ro
+      - ./:/opt/spark/work-dir
     command: >
       bash -lc "/opt/spark/sbin/start-worker.sh spark://spark-master:7077 && tail -f /opt/spark/logs/*"
 
