@@ -2,6 +2,7 @@ import argparse
 import logging
 import yaml
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 
 
 def load_config(path: str) -> dict:
@@ -78,14 +79,54 @@ def main():
     # -----------------------------
     # 6. Read Silver Data
     # -----------------------------
-    logger.info("Reading Silver data...")
     df = spark.read.parquet(silver_input_path)
-
+    
     record_count = df.count()
     logger.info(f"Silver record count: {record_count}")
-
-    logger.info("Gold skeleton job completed successfully.")
-
+    
+    # -------------------------------------------------
+    # DAILY REVENUE MART
+    # -------------------------------------------------
+    from pyspark.sql import functions as F
+    
+    logger.info("Building daily_revenue mart...")
+    
+    # Expect these columns exist in Silver:
+    # InvoiceDate (timestamp), InvoiceNo (string), CustomerID (string/int), Quantity (int), UnitPrice (double)
+    df2 = (
+        df
+        .withColumn("date", F.to_date(F.col("InvoiceDate")))
+        .withColumn("line_revenue", F.col("Quantity") * F.col("UnitPrice"))
+    )
+    
+    # Business rule: remove negative revenue lines (returns/cancellations)
+    df2 = df2.filter(F.col("line_revenue") >= 0)
+    
+    daily_revenue = (
+        df2.groupBy("date")
+        .agg(
+            F.round(F.sum("line_revenue"), 2).alias("revenue"),
+            F.countDistinct("InvoiceNo").alias("orders"),
+            F.countDistinct("CustomerID").alias("customers"),
+        )
+        .orderBy("date")
+    )
+    
+    daily_count = daily_revenue.count()
+    logger.info(f"daily_revenue rows: {daily_count}")
+    
+    daily_path = gold_output_base_path + "daily_revenue/"
+    logger.info(f"Writing daily_revenue to: {daily_path}")
+    
+    (
+        daily_revenue
+        .repartition(1)  # small output, easier to inspect
+        .write.mode("overwrite")
+        .partitionBy("date")
+        .parquet(daily_path)
+    )
+    
+    logger.info("Gold job completed successfully.")
     spark.stop()
 
 
