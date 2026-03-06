@@ -80,17 +80,17 @@ def main():
     # 6. Read Silver Data
     # -----------------------------
     df = spark.read.parquet(silver_input_path)
-    
+
     record_count = df.count()
     logger.info(f"Silver record count: {record_count}")
-    
+
     # -------------------------------------------------
     # DAILY REVENUE MART
     # -------------------------------------------------
     from pyspark.sql import functions as F
-    
+
     logger.info("Building daily_revenue mart...")
-    
+
     # Expect these columns exist in Silver:
     # InvoiceDate (timestamp), InvoiceNo (string), CustomerID (string/int), Quantity (int), UnitPrice (double)
     df2 = (
@@ -98,10 +98,10 @@ def main():
         .withColumn("date", F.to_date(F.col("InvoiceDate")))
         .withColumn("line_revenue", F.col("Quantity") * F.col("UnitPrice"))
     )
-    
+
     # Business rule: remove negative revenue lines (returns/cancellations)
     df2 = df2.filter(F.col("line_revenue") >= 0)
-    
+
     daily_revenue = (
         df2.groupBy("date")
         .agg(
@@ -111,13 +111,13 @@ def main():
         )
         .orderBy("date")
     )
-    
+
     daily_count = daily_revenue.count()
     logger.info(f"daily_revenue rows: {daily_count}")
-    
+
     daily_path = gold_output_base_path + "daily_revenue/"
     logger.info(f"Writing daily_revenue to: {daily_path}")
-    
+
     (
         daily_revenue
         .repartition(1)  # small output, easier to inspect
@@ -125,8 +125,44 @@ def main():
         .partitionBy("date")
         .parquet(daily_path)
     )
-    
+
+    # -------------------------------------------------
+    # TOP PRODUCTS MART
+    # -------------------------------------------------
+    logger.info("Building top_products mart...")
+
+    # Revenue per line (safe: does not depend on total_price existing)
+    top_df = (
+        df
+        .withColumn("line_revenue", F.col("Quantity") * F.col("UnitPrice"))
+        .filter(F.col("line_revenue") >= 0)
+    )
+
+    top_products = (
+        top_df.groupBy("StockCode", "Description")
+        .agg(
+            F.round(F.sum("line_revenue"), 2).alias("revenue"),
+            F.sum("Quantity").alias("qty"),
+            F.countDistinct("CustomerID").alias("customers"),
+        )
+        .orderBy(F.col("revenue").desc())
+    )
+
+    top_count = top_products.count()
+    logger.info(f"top_products rows: {top_count}")
+
+    top_products_path = gold_output_base_path + "top_products/"
+    logger.info(f"Writing top_products to: {top_products_path}")
+
+    (
+        top_products
+        .repartition(1)
+        .write.mode("overwrite")
+        .parquet(top_products_path)
+    )
+
     logger.info("Gold job completed successfully.")
+
     spark.stop()
 
 
