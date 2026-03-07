@@ -161,6 +161,41 @@ def main():
         .parquet(top_products_path)
     )
 
+    # -------------------------------------------------
+    # COUNTRY PERFORMANCE MART
+    # -------------------------------------------------
+    logger.info("Building country_performance mart...")
+
+    country_df = (
+        df
+        .withColumn("line_revenue", F.col("Quantity")*F.col("UnitPrice"))
+        .filter(F.col("line_revenue") >= 0)
+    )
+
+    country_performance = (
+        country_df
+        .groupBy("Country")
+        .agg(
+            F.round(F.sum("line_revenue"),2).alias("revenue"),
+            F.countDistinct("InvoiceNo").alias("orders"),
+            F.countDistinct("CustomerID").alias("customers"),
+        )
+        .orderBy(F.col("revenue").desc())
+    )
+
+    country_count = country_performance.count()
+    logger.info(f"country_performance rows: {country_count}")
+
+    country_path = gold_output_base_path + "country_performance/"
+    logger.info(f"Writing country_performance to {country_path}")
+
+    (
+        country_performance
+        .repartition(1)
+        .write.mode("overwrite")
+        .parquet(country_path)
+    )
+
     logger.info("Gold job completed successfully.")
 
     spark.stop()
