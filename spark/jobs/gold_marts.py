@@ -196,6 +196,48 @@ def main():
         .parquet(country_path)
     )
 
+    # -------------------------------------------------
+    # CUSTOMER RFM
+    # -------------------------------------------------
+    logger.info("Building customer_rfm...")
+
+    customer_rfm_df = (
+        df
+        .withColumn("line_revenue", F.col("Quantity") * F.col("UnitPrice"))
+        .groupBy("CustomerID")
+        .agg(
+            F.max("InvoiceDate").alias("last_order_ts"),
+            F.countDistinct("InvoiceNo").alias("frequency_orders"),
+            F.sum("line_revenue").alias("monetary_value"),
+        )
+
+        .withColumn("snapshot_date", F.to_date(F.lit(args.ds)))
+        .withColumn("last_order_date",F.to_date(F.col("last_order_ts")))
+        .withColumn(
+            "recency_days",
+            F.datediff(F.col("snapshot_date"), F.col("last_order_date"))
+        )
+        .select(
+            "CustomerID",
+            "snapshot_date",
+            "last_order_date",
+            "recency_days",
+            "frequency_orders",
+            "monetary_value",
+        )
+    )
+
+    customer_rfm_output = gold_output_base_path + "customer_rfm/"
+
+    logger.info("customer_rfm row count: %s", customer_rfm_df.count())
+
+    (
+        customer_rfm_df
+        .write
+        .mode("overwrite")
+        .parquet(customer_rfm_output)
+    )
+
     logger.info("Gold job completed successfully.")
 
     spark.stop()
