@@ -4,6 +4,7 @@ import yaml
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
+from lib.gold_online_retail import build_customer_rfm
 
 def load_config(path: str) -> dict:
     with open(path, "r") as f:
@@ -13,11 +14,11 @@ def load_config(path: str) -> dict:
 def build_spark_session(app_name: str) -> SparkSession:
     spark = (
         SparkSession.builder
+        .master("spark://spark-master:7077")
         .appName(app_name)
         .getOrCreate()
     )
     return spark
-
 
 def main():
     # -----------------------------
@@ -201,31 +202,7 @@ def main():
     # -------------------------------------------------
     logger.info("Building customer_rfm...")
 
-    customer_rfm_df = (
-        df
-        .withColumn("line_revenue", F.col("Quantity") * F.col("UnitPrice"))
-        .groupBy("CustomerID")
-        .agg(
-            F.max("InvoiceDate").alias("last_order_ts"),
-            F.countDistinct("InvoiceNo").alias("frequency_orders"),
-            F.sum("line_revenue").alias("monetary_value"),
-        )
-
-        .withColumn("snapshot_date", F.to_date(F.lit(args.ds)))
-        .withColumn("last_order_date",F.to_date(F.col("last_order_ts")))
-        .withColumn(
-            "recency_days",
-            F.datediff(F.col("snapshot_date"), F.col("last_order_date"))
-        )
-        .select(
-            "CustomerID",
-            "snapshot_date",
-            "last_order_date",
-            "recency_days",
-            "frequency_orders",
-            "monetary_value",
-        )
-    )
+    customer_rfm_df = build_customer_rfm(df, args.ds)
 
     customer_rfm_output = gold_output_base_path + "customer_rfm/"
 

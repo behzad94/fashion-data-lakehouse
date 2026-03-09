@@ -50,6 +50,21 @@ with DAG(
     application_args=["{{ ds }}"],
     conf=S3A_CONF,
 )
+    
+    gold_marts = SparkSubmitOperator(
+    task_id="gold_marts",
+    conn_id="spark_default",
+    application="/opt/spark/jobs/gold_marts.py",
+    name="gold_online_retail",
+    verbose=True,
+    application_args=[
+      "--config",
+      "/opt/fdp/config/dev.yml",
+      "--ds",
+      "{{ ds }}",
+    ],
+    conf=S3A_CONF,
+)
 
-    bronze_ingest >> silver_transform >> validate_silver
+    bronze_ingest >> silver_transform >> validate_silver >> gold_marts
 
